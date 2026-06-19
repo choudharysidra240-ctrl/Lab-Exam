@@ -1,82 +1,58 @@
-"""
-Feature extraction module for text classification.
-"""
-import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-import json
 
-def extract_features(train_texts, test_texts, vectorizer_type='tfidf', max_features=5000, sublinear_tf=True):
-    """
-    Extract features using Bag-of-Words or TF-IDF.
-    
+
+def extract_bow_features(corpus, max_features=5000):
+    """Convert a text corpus into Bag-of-Words count features.
+
     Args:
-        train_texts: Training text data
-        test_texts: Test text data
-        vectorizer_type: 'bow' or 'tfidf'
-        max_features: Maximum number of features
-        sublinear_tf: Apply sublinear tf scaling (TF-IDF only)
-        
-    Returns:
-        tuple: (train_features, test_features, vectorizer)
-    """
-    if vectorizer_type == 'bow':
-        vectorizer = CountVectorizer(
-            max_features=max_features,
-            min_df=2,  # Ignore terms appearing in less than 2 documents
-            max_df=0.95  # Ignore terms appearing in more than 95% of documents
-        )
-    else:  # tfidf
-        vectorizer = TfidfVectorizer(
-            max_features=max_features,
-            sublinear_tf=sublinear_tf,
-            min_df=2,
-            max_df=0.95
-        )
-    
-    train_features = vectorizer.fit_transform(train_texts)
-    test_features = vectorizer.transform(test_texts)
-    
-    return train_features, test_features, vectorizer
+        corpus (iterable of str): Preprocessed text documents.
+        max_features (int): Maximum vocabulary size to keep.
 
-def get_top_terms(vectorizer, class_texts, class_names, n_terms=20):
+    Returns:
+        tuple: (sparse feature matrix, fitted CountVectorizer instance)
     """
-    Get top n terms for each class.
-    
+    # CountVectorizer simply counts raw word occurrences per document
+    vectorizer = CountVectorizer(max_features=max_features)
+    X = vectorizer.fit_transform(corpus)
+    return X, vectorizer
+
+
+def extract_tfidf_features(corpus, max_features=5000):
+    """Convert a text corpus into TF-IDF weighted features.
+
     Args:
-        vectorizer: Fitted vectorizer
-        class_texts: List of texts for each class
-        class_names: List of class names
-        n_terms: Number of top terms to return
-        
-    Returns:
-        dict: Top terms for each class
-    """
-    top_terms = {}
-    
-    for class_name, texts in zip(class_names, class_texts):
-        if not texts:
-            continue
-            
-        # Transform class texts
-        class_features = vectorizer.transform(texts)
-        feature_weights = class_features.sum(axis=0).A1
-        
-        # Get top terms
-        feature_names = vectorizer.get_feature_names_out()
-        top_indices = feature_weights.argsort()[-n_terms:][::-1]
-        
-        top_terms[class_name] = [(feature_names[i], feature_weights[i]) for i in top_indices]
-    
-    return top_terms
+        corpus (iterable of str): Preprocessed text documents.
+        max_features (int): Maximum vocabulary size to keep.
 
-def print_top_terms(top_terms):
+    Returns:
+        tuple: (sparse feature matrix, fitted TfidfVectorizer instance)
     """
-    Print top terms for each class in a readable format.
+    # sublinear_tf=True applies log scaling to term frequency, which dampens
+    # the effect of very frequent words (like "report", "section") that
+    # would otherwise dominate purely on raw count
+    vectorizer = TfidfVectorizer(max_features=max_features, sublinear_tf=True)
+    X = vectorizer.fit_transform(corpus)
+    return X, vectorizer
+
+
+def top_terms_per_class(X, vectorizer, labels, target_label, top_n=20):
+    """Get the top N highest-weighted terms for a specific class.
+
+    Args:
+        X: Feature matrix (BoW or TF-IDF).
+        vectorizer: Fitted vectorizer used to produce X.
+        labels (pd.Series): Class labels aligned with rows of X.
+        target_label (str): The class to inspect.
+        top_n (int): Number of top terms to return.
+
+    Returns:
+        list of tuple: (term, weight) pairs sorted by weight descending.
     """
-    print("\nTop Terms by Class:")
-    print("=" * 50)
-    for class_name, terms in top_terms.items():
-        print(f"\nClass: {class_name}")
-        print("-" * 30)
-        for term, weight in terms:
-            print(f"  {term}: {weight:.4f}")
+    # Select only the rows belonging to the target class
+    mask = (labels == target_label).values
+    # Sum feature weights across all documents in that class
+    class_sums = X[mask].sum(axis=0)
+    terms = vectorizer.get_feature_names_out()
+    # Pair each term with its summed weight, then sort descending
+    term_weights = sorted(zip(terms, class_sums.tolist()[0]), key=lambda x: -x[1])
+    return term_weights[:top_n]

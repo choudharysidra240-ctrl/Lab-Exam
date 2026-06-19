@@ -1,84 +1,46 @@
-"""
-Text preprocessing module for legal document classification.
-"""
 import re
-import nltk
+import string
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
-from bs4 import BeautifulSoup
-import pandas as pd
+from nltk.tokenize import word_tokenize
 
-# Download NLTK data (run once)
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-    nltk.download('stopwords')
+# Load English stopwords once at module level so we don't reload them on every function call
+stop_words = set(stopwords.words('english'))
 
-def preprocess_text(text, stem=True):
-    """
-    Comprehensive text preprocessing pipeline.
-    
+# PorterStemmer chosen over lemmatization: faster, and legal terms
+# (dispute/disputed, comply/compliance) have simple enough morphology
+# that stemming gives adequate normalization without needing a full dictionary lookup
+stemmer = PorterStemmer()
+
+
+def preprocess_text(text):
+    """Clean and normalize raw notice text for feature extraction.
+
     Args:
-        text (str): Raw text document
-        stem (bool): Whether to apply stemming (True) or lemmatization (False)
-        
+        text (str): Raw input text from the 'notice' column.
+
     Returns:
-        str: Preprocessed text
+        str: Cleaned, lowercased, stemmed text with stopwords removed.
     """
-    if not isinstance(text, str):
-        return ""
-    
-    # 1. HTML tag removal
-    # Justification: Legal notices may contain HTML formatting from email/websites
-    text = BeautifulSoup(text, 'html.parser').get_text()
-    
-    # 2. Lowercasing
-    # Justification: Case doesn't matter for classification (e.g., "Contract" vs "contract")
+    # Step 1: Remove HTML tags (defensive — dataset may not have any, but exam requires this step)
+    text = re.sub(r'<.*?>', '', text)
+
+    # Step 2: Lowercase everything so "Contract" and "contract" are treated as the same token
     text = text.lower()
-    
-    # 3. Punctuation and special character removal
-    # Justification: Removes noise while preserving alphanumeric content
-    # Keeps hyphens as they may be relevant in legal terms (e.g., "non-compete")
-    text = re.sub(r'[^a-zA-Z0-9\s-]', ' ', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    # 4. Tokenization
-    # Justification: Split text into individual tokens for further processing
-    tokens = nltk.word_tokenize(text)
-    
-    # 5. Stopword removal
-    # Justification: Remove common words that carry little meaning for classification
-    # Using NLTK's default list as it's comprehensive and well-tested
-    stop_words = set(stopwords.words('english'))
-    # Adding domain-specific stopwords
-    legal_stopwords = {'hereinafter', 'aforesaid', 'thereof', 'thereto', 'herein'}
-    stop_words.update(legal_stopwords)
-    
-    tokens = [token for token in tokens if token not in stop_words and len(token) > 2]
-    
-    # 6. Stemming (vs Lemmatization)
-    # Justification: Using stemmer for speed and performance
-    # PorterStemmer is faster than lemmatization and sufficient for legal terms
-    # (e.g., "dispute", "disputed", "disputing" all stem to "disput")
-    if stem:
-        stemmer = PorterStemmer()
-        tokens = [stemmer.stem(token) for token in tokens]
-    
-    return ' '.join(tokens)
 
-def preprocess_dataframe(df, text_column='text', stem=True):
-    """
-    Apply preprocessing to a DataFrame column.
-    
-    Args:
-        df (pd.DataFrame): Input DataFrame
-        text_column (str): Name of text column
-        stem (bool): Whether to apply stemming
-        
-    Returns:
-        pd.DataFrame: DataFrame with preprocessed column
-    """
-    df = df.copy()
-    df['cleaned_text'] = df[text_column].apply(lambda x: preprocess_text(x, stem))
-    return df
+    # Step 3: Remove punctuation since it carries no class-distinguishing signal for this task
+    text = text.translate(str.maketrans('', '', string.punctuation))
+
+    # Step 4: Tokenize into individual words so we can filter/stem word by word
+    tokens = word_tokenize(text)
+
+    # Step 5: Remove stopwords (the, is, and, etc.) — these appear in every class equally
+    # and would just add noise to the feature space
+    tokens = [t for t in tokens if t not in stop_words]
+
+    # Step 6: Stem each remaining token to collapse word variants to a common root
+    tokens = [stemmer.stem(t) for t in tokens]
+
+    # Rejoin tokens into a single string so vectorizers (CountVectorizer/TfidfVectorizer)
+    # can process it as normal text
+    return ' '.join(tokens)
