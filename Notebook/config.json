@@ -1,0 +1,25 @@
+{
+    "random_seed": 42,
+    "test_size": 0.2,
+    "max_features": 5000,
+    "model_1": {
+        "name": "LogisticRegression",
+        "params": {
+            "C": 1.0,
+            "max_iter": 1000,
+            "class_weight": "balanced"
+        }
+    },
+    "model_2": {
+        "name": "MultinomialNB",
+        "params": {
+            "alpha": 1.0
+        }
+    },
+    "vectorizer_config": {
+        "min_df": 2,
+        "max_df": 0.95
+    },
+    "mlflow_experiment": "legal_document_classifier",
+    "results_path": "results/"
+}

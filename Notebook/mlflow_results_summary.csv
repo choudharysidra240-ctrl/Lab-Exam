@@ -1,0 +1,5 @@
+Model,Features,Accuracy,F1-Weighted,F1-Macro,Training Time
+LogisticRegression,TF-IDF,1.0000,1.0000,1.0000,0.120s
+LogisticRegression,BOW,1.0000,1.0000,1.0000,0.120s
+NaiveBayes,TF-IDF,1.0000,1.0000,1.0000,0.003s
+NaiveBayes,BOW,1.0000,1.0000,1.0000,0.003s
